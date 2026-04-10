@@ -1,0 +1,7 @@
+train.py
+output.csv
+logs
+sft_output
+*.pyc
+__pycache__
+prepare_data.py

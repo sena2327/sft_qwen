@@ -96,7 +96,7 @@ def main():
         
         # 軽い推論テスト
         sampling_params = SamplingParams(max_tokens=10)
-        llm = LLM(model=test_model_id, trust_remote_code=True, dtype="bfloat16", enforce_eager=True)
+        llm = LLM(model=test_model_id, trust_remote_code=True, dtype="float16", enforce_eager=True)
         outputs = llm.generate(["人工知能の未来について、"], sampling_params)
         
         generated_text = outputs[0].outputs[0].text

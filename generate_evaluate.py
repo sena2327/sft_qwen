@@ -34,9 +34,16 @@ MAX_NEW_TOKENS = 128
 def main():
     parser = argparse.ArgumentParser(description="タイトル生成モデルの評価スクリプト")
     parser.add_argument("--model", type=str, default="sft_output", help="評価するモデルのパス")
+    parser.add_argument(
+        "--system-prompt-file",
+        type=str,
+        default=SYSTEM_PROMPT_FILE,
+        help="使用するシステムプロンプトファイルのパス",
+    )
     args = parser.parse_args()
 
     model_name = args.model
+    system_prompt_file = args.system_prompt_file
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     
@@ -58,11 +65,11 @@ def main():
     if not os.path.exists(TEST_FILE):
         print(f"❌ Test data {TEST_FILE} not found.")
         return
-    if not os.path.exists(SYSTEM_PROMPT_FILE):
-        print(f"❌ System prompt {SYSTEM_PROMPT_FILE} not found.")
+    if not os.path.exists(system_prompt_file):
+        print(f"❌ System prompt {system_prompt_file} not found.")
         return
 
-    with open(SYSTEM_PROMPT_FILE, 'r', encoding='utf-8') as f:
+    with open(system_prompt_file, 'r', encoding='utf-8') as f:
         system_prompt = f.read().strip()
 
     print("Loading test dataset...")

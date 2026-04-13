@@ -5,6 +5,11 @@ import subprocess
 import sys
 
 
+def current_detail_logs(log_dir: str = "logs") -> set[str]:
+    pattern = os.path.join(log_dir, "*_details.jsonl")
+    return set(glob.glob(pattern))
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="system_prompts 配下の prompt を順に使って generate_evaluate.py を実行する"
@@ -44,7 +49,13 @@ def main():
             prompt_file,
         ]
         print("$ " + " ".join(cmd))
+        before_logs = current_detail_logs()
         subprocess.run(cmd, check=True)
+        after_logs = current_detail_logs()
+        new_logs = sorted(after_logs - before_logs)
+        for log_path in new_logs:
+            os.remove(log_path)
+            print(f"🧹 Deleted generated detail log: {log_path}")
 
     print("=" * 60)
     print("✅ All prompt evaluations finished.")

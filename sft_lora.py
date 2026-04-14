@@ -45,6 +45,11 @@ def evaluate_rouge(
     batch_size: int,
     max_new_tokens: int,
 ) -> tuple[float, float]:
+    if batch_size <= 0:
+        raise ValueError(f"batch_size must be > 0. got: {batch_size}")
+    if len(raw_eval_dataset) == 0:
+        raise ValueError("Validation dataset is empty. ROUGE cannot be computed.")
+
     custom_tokenizer = JanomeRougeTokenizer(use_stemmer=True)
     scorer = rouge_scorer.RougeScorer(
         ["rougeL"], use_stemmer=False, tokenizer=custom_tokenizer
@@ -93,6 +98,9 @@ def evaluate_rouge(
                 score = scorer.score(reference, prediction)
                 all_scores.append(score["rougeL"].fmeasure)
 
+    if not all_scores:
+        raise RuntimeError("No ROUGE scores were computed on validation dataset.")
+
     return float(np.mean(all_scores)), float(np.std(all_scores))
 
 
@@ -118,6 +126,9 @@ class RougeSFTTrainer(SFTTrainer):
             ignore_keys=ignore_keys,
             metric_key_prefix=metric_key_prefix,
         )
+        if not self.is_world_process_zero():
+            return metrics
+
         rouge_mean, rouge_std = evaluate_rouge(
             self.model,
             self.processing_class if hasattr(self, "processing_class") else self.tokenizer,
@@ -128,7 +139,6 @@ class RougeSFTTrainer(SFTTrainer):
         )
         metrics[f"{metric_key_prefix}_rougeL_mean"] = rouge_mean
         metrics[f"{metric_key_prefix}_rougeL_std"] = rouge_std
-        self.log(metrics)
         print(
             f"{metric_key_prefix.upper()} ROUGE-L F1: {rouge_mean:.4f} ± {rouge_std:.4f}"
         )
@@ -190,6 +200,12 @@ def main() -> None:
         help="validation ROUGE評価で生成する最大トークン数",
     )
     args = parser.parse_args()
+    if args.batch_size <= 0:
+        raise ValueError(f"--batch-size must be > 0. got: {args.batch_size}")
+    if args.eval_max_new_tokens <= 0:
+        raise ValueError(
+            f"--eval-max-new-tokens must be > 0. got: {args.eval_max_new_tokens}"
+        )
 
     if LoraConfig is None or get_peft_model is None or TaskType is None:
         raise ImportError(
@@ -227,6 +243,7 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(args.base_model, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
 
     config = AutoConfig.from_pretrained(args.base_model, trust_remote_code=True)
     for attr_name in (

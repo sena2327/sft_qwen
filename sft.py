@@ -37,6 +37,11 @@ def evaluate_rouge(
     batch_size: int,
     max_new_tokens: int,
 ) -> tuple[float, float]:
+    if batch_size <= 0:
+        raise ValueError(f"batch_size must be > 0. got: {batch_size}")
+    if len(raw_eval_dataset) == 0:
+        raise ValueError("Validation dataset is empty. ROUGE cannot be computed.")
+
     custom_tokenizer = JanomeRougeTokenizer(use_stemmer=True)
     scorer = rouge_scorer.RougeScorer(
         ["rougeL"], use_stemmer=False, tokenizer=custom_tokenizer
@@ -81,6 +86,9 @@ def evaluate_rouge(
                 prediction = tokenizer.decode(pred_ids, skip_special_tokens=True).strip()
                 score = scorer.score(reference, prediction)
                 all_scores.append(score["rougeL"].fmeasure)
+
+    if not all_scores:
+        raise RuntimeError("No ROUGE scores were computed on validation dataset.")
 
     return float(np.mean(all_scores)), float(np.std(all_scores))
 
@@ -131,6 +139,12 @@ def main() -> None:
         help="学習後のROUGE評価で生成する最大トークン数",
     )
     args = parser.parse_args()
+    if args.batch_size <= 0:
+        raise ValueError(f"--batch-size must be > 0. got: {args.batch_size}")
+    if args.eval_max_new_tokens <= 0:
+        raise ValueError(
+            f"--eval-max-new-tokens must be > 0. got: {args.eval_max_new_tokens}"
+        )
     if not (0.0 <= args.dropout < 1.0):
         raise ValueError(f"--dropout must be in [0.0, 1.0). got: {args.dropout}")
 
@@ -159,6 +173,7 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(args.base_model, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
 
     config = AutoConfig.from_pretrained(args.base_model, trust_remote_code=True)
     for attr_name in (
@@ -223,16 +238,17 @@ def main() -> None:
     trainer = SFTTrainer(**trainer_kwargs)
     trainer.train()
 
-    rouge_mean, rouge_std = evaluate_rouge(
-        trainer.model,
-        tokenizer,
-        raw_eval_dataset,
-        system_prompt=system_prompt,
-        batch_size=args.batch_size,
-        max_new_tokens=args.eval_max_new_tokens,
-    )
-    print(f"ROUGE-L F1 (validation): {rouge_mean:.4f} ± {rouge_std:.4f}")
-    trainer.log({"eval_rougeL_mean": rouge_mean, "eval_rougeL_std": rouge_std})
+    if trainer.is_world_process_zero():
+        rouge_mean, rouge_std = evaluate_rouge(
+            trainer.model,
+            tokenizer,
+            raw_eval_dataset,
+            system_prompt=system_prompt,
+            batch_size=args.batch_size,
+            max_new_tokens=args.eval_max_new_tokens,
+        )
+        print(f"ROUGE-L F1 (validation): {rouge_mean:.4f} ± {rouge_std:.4f}")
+        trainer.log({"eval_rougeL_mean": rouge_mean, "eval_rougeL_std": rouge_std})
 
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)

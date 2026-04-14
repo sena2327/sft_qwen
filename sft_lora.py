@@ -1,13 +1,10 @@
 import argparse
 import inspect
 import os
-import tempfile
 from typing import Dict, List
 
-import numpy as np
 import torch
 from datasets import load_dataset
-from rouge_score import rouge_scorer
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -16,150 +13,24 @@ from transformers import (
     TrainingArguments,
 )
 from trl import SFTTrainer
-from utils.janome_tokenizer import JanomeRougeTokenizer
 
 try:
-    from peft import LoraConfig, PeftModel, TaskType, get_peft_model
+    from peft import LoraConfig, TaskType, get_peft_model
 except Exception:  # pragma: no cover - runtime dependency check
     LoraConfig = None
-    PeftModel = None
     TaskType = None
     get_peft_model = None
-
-try:
-    from vllm import LLM, SamplingParams
-except Exception:  # pragma: no cover - runtime dependency check
-    LLM = None
-    SamplingParams = None
 
 BASE_MODEL = "Qwen/Qwen3-0.6B-Base"
 TRAIN_FILE = "data/train.jsonl"
 VALIDATION_FILE = "data/validation.jsonl"
 OUTPUT_DIR = "sft_output_lora"
 SYSTEM_PROMPT_FILE = "system_prompt.txt"
-EVAL_MAX_NEW_TOKENS = 128
 
 
 def format_record(record: Dict[str, str], system_prompt: str) -> Dict[str, str]:
     prompt = f"{system_prompt}\n{record['text']}\n答え:\n"
     return {"text": f"{prompt}{record['target']}"}
-
-
-def evaluate_rouge(
-    peft_model,
-    base_model_name: str,
-    tokenizer,
-    raw_eval_dataset,
-    system_prompt: str,
-    batch_size: int,
-    max_new_tokens: int,
-    vllm_dtype: str,
-    seed: int = 42,
-) -> tuple[float, float]:
-    if LLM is None or SamplingParams is None:
-        raise ImportError("vLLM is required for ROUGE evaluation. Install: pip install vllm")
-    if PeftModel is None:
-        raise ImportError("peft is required for LoRA merge evaluation. Install: pip install peft")
-    if batch_size <= 0:
-        raise ValueError(f"batch_size must be > 0. got: {batch_size}")
-    if len(raw_eval_dataset) == 0:
-        raise ValueError("Validation dataset is empty. ROUGE cannot be computed.")
-
-    custom_tokenizer = JanomeRougeTokenizer(use_stemmer=True)
-    scorer = rouge_scorer.RougeScorer(
-        ["rougeL"], use_stemmer=False, tokenizer=custom_tokenizer
-    )
-
-    prompts: List[str] = []
-    references: List[str] = []
-    for start in range(0, len(raw_eval_dataset), batch_size):
-        batch = raw_eval_dataset[start : start + batch_size]
-        if isinstance(batch, dict):
-            texts = batch["text"]
-            targets = batch["target"]
-        else:
-            texts = [rec["text"] for rec in batch]
-            targets = [rec["target"] for rec in batch]
-        prompts.extend([f"{system_prompt}\n{text}\n答え:\n" for text in texts])
-        references.extend([target.strip() for target in targets])
-
-    all_scores = []
-    with tempfile.TemporaryDirectory(prefix="lora_eval_") as tmp_dir:
-        adapter_dir = os.path.join(tmp_dir, "adapter")
-        merged_dir = os.path.join(tmp_dir, "merged")
-
-        peft_model.save_pretrained(adapter_dir)
-
-        base_model = AutoModelForCausalLM.from_pretrained(
-            base_model_name,
-            dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            trust_remote_code=True,
-        )
-        merge_model = PeftModel.from_pretrained(base_model, adapter_dir)
-        merged_model = merge_model.merge_and_unload()
-        merged_model.save_pretrained(merged_dir)
-        tokenizer.save_pretrained(merged_dir)
-
-        llm = LLM(model=merged_dir, dtype=vllm_dtype, seed=seed)
-        sampling_params = SamplingParams(temperature=0.0, max_tokens=max_new_tokens)
-        outputs = llm.generate(prompts, sampling_params)
-
-        for i, output in enumerate(outputs):
-            prediction = output.outputs[0].text.strip()
-            score = scorer.score(references[i], prediction)
-            all_scores.append(score["rougeL"].fmeasure)
-
-    if not all_scores:
-        raise RuntimeError("No ROUGE scores were computed on validation dataset.")
-
-    return float(np.mean(all_scores)), float(np.std(all_scores))
-
-
-class RougeSFTTrainer(SFTTrainer):
-    def __init__(
-        self,
-        *args,
-        rouge_eval_dataset,
-        rouge_base_model: str,
-        rouge_system_prompt: str,
-        rouge_batch_size: int,
-        rouge_max_new_tokens: int,
-        rouge_vllm_dtype: str,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-        self._rouge_eval_dataset = rouge_eval_dataset
-        self._rouge_base_model = rouge_base_model
-        self._rouge_system_prompt = rouge_system_prompt
-        self._rouge_batch_size = rouge_batch_size
-        self._rouge_max_new_tokens = rouge_max_new_tokens
-        self._rouge_vllm_dtype = rouge_vllm_dtype
-
-    def evaluate(self, eval_dataset=None, ignore_keys=None, metric_key_prefix="eval"):
-        metrics = super().evaluate(
-            eval_dataset=eval_dataset,
-            ignore_keys=ignore_keys,
-            metric_key_prefix=metric_key_prefix,
-        )
-        if not self.is_world_process_zero():
-            return metrics
-
-        rouge_mean, rouge_std = evaluate_rouge(
-            self.model,
-            self._rouge_base_model,
-            self.processing_class if hasattr(self, "processing_class") else self.tokenizer,
-            self._rouge_eval_dataset,
-            system_prompt=self._rouge_system_prompt,
-            batch_size=self._rouge_batch_size,
-            max_new_tokens=self._rouge_max_new_tokens,
-            vllm_dtype=self._rouge_vllm_dtype,
-        )
-        metrics[f"{metric_key_prefix}_rougeL_mean"] = rouge_mean
-        metrics[f"{metric_key_prefix}_rougeL_std"] = rouge_std
-        print(
-            f"{metric_key_prefix.upper()} ROUGE-L F1: {rouge_mean:.4f} ± {rouge_std:.4f}"
-        )
-        return metrics
 
 
 def main() -> None:
@@ -211,25 +82,14 @@ def main() -> None:
         help="WandB/Comet ML のプロジェクト名",
     )
     parser.add_argument(
-        "--eval-max-new-tokens",
-        type=int,
-        default=EVAL_MAX_NEW_TOKENS,
-        help="validation ROUGE評価で生成する最大トークン数",
-    )
-    parser.add_argument(
-        "--vllm-dtype",
-        type=str,
-        default="float16",
-        choices=["float16", "bfloat16", "float32", "half"],
-        help="vLLM評価時のdtype",
+        "--weight-decay",
+        type=float,
+        default=0.0,
+        help="weight decay",
     )
     args = parser.parse_args()
     if args.batch_size <= 0:
         raise ValueError(f"--batch-size must be > 0. got: {args.batch_size}")
-    if args.eval_max_new_tokens <= 0:
-        raise ValueError(
-            f"--eval-max-new-tokens must be > 0. got: {args.eval_max_new_tokens}"
-        )
 
     if LoraConfig is None or get_peft_model is None or TaskType is None:
         raise ImportError(
@@ -258,8 +118,7 @@ def main() -> None:
         lambda rec: format_record(rec, system_prompt),
         remove_columns=ds["train"].column_names,
     )
-    raw_eval_dataset = ds["validation"]
-    eval_dataset = raw_eval_dataset.map(
+    eval_dataset = ds["validation"].map(
         lambda rec: format_record(rec, system_prompt),
         remove_columns=ds["validation"].column_names,
     )
@@ -323,6 +182,7 @@ def main() -> None:
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
+        weight_decay=args.weight_decay,
         report_to=[args.report_to] if args.report_to != "none" else [],
         run_name=args.run_name,
         fp16=torch.cuda.is_available(),
@@ -333,15 +193,7 @@ def main() -> None:
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        rouge_eval_dataset=raw_eval_dataset,
-        rouge_base_model=args.base_model,
-        rouge_system_prompt=system_prompt,
-        rouge_batch_size=args.batch_size,
-        rouge_max_new_tokens=args.eval_max_new_tokens,
-        rouge_vllm_dtype=args.vllm_dtype,
     )
-    # Check the base SFTTrainer signature (not RougeSFTTrainer wrapper),
-    # because tokenizer/processing_class compatibility depends on TRL version.
     signature_params = inspect.signature(SFTTrainer.__init__).parameters
     if "dataset_text_field" in signature_params:
         trainer_kwargs["dataset_text_field"] = "text"
@@ -354,7 +206,7 @@ def main() -> None:
     if "callbacks" in signature_params:
         trainer_kwargs["callbacks"] = [EarlyStoppingCallback(early_stopping_patience=2)]
 
-    trainer = RougeSFTTrainer(**trainer_kwargs)
+    trainer = SFTTrainer(**trainer_kwargs)
     trainer.train()
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)

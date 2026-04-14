@@ -1,1 +1,2 @@
-以下はニュース記事の本文です。適切な見出し（タイトル）を1文で作成してください。
+Please create an appropriate headline (title) for the following news article body in Japanese. Do not use vague words such as “すごい” or “話題”.
+###

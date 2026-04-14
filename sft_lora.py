@@ -57,8 +57,18 @@ def evaluate_rouge(
     with torch.no_grad():
         for start in range(0, len(raw_eval_dataset), batch_size):
             batch = raw_eval_dataset[start : start + batch_size]
-            prompts = [f"{system_prompt}\n{rec['text']}\n答え:\n" for rec in batch]
-            references = [rec["target"].strip() for rec in batch]
+            # `datasets.Dataset` slicing can return either:
+            # - dict of lists: {"text": [...], "target": [...]}
+            # - list of dicts: [{"text": ..., "target": ...}, ...]
+            if isinstance(batch, dict):
+                texts = batch["text"]
+                targets = batch["target"]
+            else:
+                texts = [rec["text"] for rec in batch]
+                targets = [rec["target"] for rec in batch]
+
+            prompts = [f"{system_prompt}\n{text}\n答え:\n" for text in texts]
+            references = [target.strip() for target in targets]
 
             inputs = tokenizer(
                 prompts,

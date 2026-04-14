@@ -106,7 +106,9 @@ def main() -> None:
         if hasattr(config, attr_name):
             setattr(config, attr_name, args.dropout)
 
-    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    # Keep weights in fp32 for Trainer AMP. `fp16=True` handles runtime casting.
+    # Loading fp16 weights here can cause GradScaler unscale errors.
+    dtype = torch.float32
     model = AutoModelForCausalLM.from_pretrained(
         args.base_model,
         config=config,

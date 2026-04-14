@@ -1,5 +1,4 @@
 train.py
-output.csv
 logs
 sft_output
 *.pyc

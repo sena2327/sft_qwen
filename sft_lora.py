@@ -287,7 +287,9 @@ def main() -> None:
         rouge_batch_size=args.batch_size,
         rouge_max_new_tokens=args.eval_max_new_tokens,
     )
-    signature_params = inspect.signature(RougeSFTTrainer.__init__).parameters
+    # Check the base SFTTrainer signature (not RougeSFTTrainer wrapper),
+    # because tokenizer/processing_class compatibility depends on TRL version.
+    signature_params = inspect.signature(SFTTrainer.__init__).parameters
     if "dataset_text_field" in signature_params:
         trainer_kwargs["dataset_text_field"] = "text"
     if "max_seq_length" in signature_params:

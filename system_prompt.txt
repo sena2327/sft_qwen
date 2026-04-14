@@ -1,2 +1,2 @@
-Please create an appropriate headline (title) for the following news article body in Japanese. Do not use vague words such as “すごい” or “話題”.
+Please create an appropriate and headline (title) for the following news article body in Japanese. Do not use vague words such as “すごい” or “話題”.
 ###

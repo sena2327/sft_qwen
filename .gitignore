@@ -5,3 +5,5 @@ sft_output
 *.pyc
 __pycache__
 prepare_data.py
+sft_output
+wandb

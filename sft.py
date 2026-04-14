@@ -3,8 +3,10 @@ import inspect
 import os
 from typing import Dict
 
+import numpy as np
 import torch
 from datasets import load_dataset
+from rouge_score import rouge_scorer
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -12,17 +14,68 @@ from transformers import (
     TrainingArguments,
 )
 from trl import SFTTrainer
+from utils.janome_tokenizer import JanomeRougeTokenizer
 
 BASE_MODEL = "Qwen/Qwen3-0.6B-Base"
 TRAIN_FILE = "data/train.jsonl"
 VALIDATION_FILE = "data/validation.jsonl"
 OUTPUT_DIR = "sft_output"
 SYSTEM_PROMPT_FILE = "system_prompt.txt"
+EVAL_MAX_NEW_TOKENS = 128
 
 
 def format_record(record: Dict[str, str], system_prompt: str) -> Dict[str, str]:
     prompt = f"{system_prompt}\n{record['text']}\n答え:\n"
     return {"text": f"{prompt}{record['target']}"}
+
+
+def evaluate_rouge(
+    model,
+    tokenizer,
+    raw_eval_dataset,
+    system_prompt: str,
+    batch_size: int,
+    max_new_tokens: int,
+) -> tuple[float, float]:
+    custom_tokenizer = JanomeRougeTokenizer(use_stemmer=True)
+    scorer = rouge_scorer.RougeScorer(
+        ["rougeL"], use_stemmer=False, tokenizer=custom_tokenizer
+    )
+
+    model.eval()
+    all_scores = []
+    device = next(model.parameters()).device
+
+    with torch.no_grad():
+        for start in range(0, len(raw_eval_dataset), batch_size):
+            batch = raw_eval_dataset[start : start + batch_size]
+            prompts = [f"{system_prompt}\n{rec['text']}\n答え:\n" for rec in batch]
+            references = [rec["target"].strip() for rec in batch]
+
+            inputs = tokenizer(
+                prompts,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=1024,
+            ).to(device)
+
+            generated = model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
+
+            prompt_lens = inputs["attention_mask"].sum(dim=1).tolist()
+            for i, reference in enumerate(references):
+                pred_ids = generated[i, int(prompt_lens[i]) :]
+                prediction = tokenizer.decode(pred_ids, skip_special_tokens=True).strip()
+                score = scorer.score(reference, prediction)
+                all_scores.append(score["rougeL"].fmeasure)
+
+    return float(np.mean(all_scores)), float(np.std(all_scores))
 
 
 def main() -> None:
@@ -64,6 +117,12 @@ def main() -> None:
         default="sft-qwen",
         help="WandB/Comet ML のプロジェクト名",
     )
+    parser.add_argument(
+        "--eval-max-new-tokens",
+        type=int,
+        default=EVAL_MAX_NEW_TOKENS,
+        help="学習後のROUGE評価で生成する最大トークン数",
+    )
     args = parser.parse_args()
     if not (0.0 <= args.dropout < 1.0):
         raise ValueError(f"--dropout must be in [0.0, 1.0). got: {args.dropout}")
@@ -84,7 +143,8 @@ def main() -> None:
         lambda rec: format_record(rec, system_prompt),
         remove_columns=ds["train"].column_names,
     )
-    eval_dataset = ds["validation"].map(
+    raw_eval_dataset = ds["validation"]
+    eval_dataset = raw_eval_dataset.map(
         lambda rec: format_record(rec, system_prompt),
         remove_columns=ds["validation"].column_names,
     )
@@ -155,6 +215,18 @@ def main() -> None:
 
     trainer = SFTTrainer(**trainer_kwargs)
     trainer.train()
+
+    rouge_mean, rouge_std = evaluate_rouge(
+        trainer.model,
+        tokenizer,
+        raw_eval_dataset,
+        system_prompt=system_prompt,
+        batch_size=args.batch_size,
+        max_new_tokens=args.eval_max_new_tokens,
+    )
+    print(f"ROUGE-L F1 (validation): {rouge_mean:.4f} ± {rouge_std:.4f}")
+    trainer.log({"eval_rougeL_mean": rouge_mean, "eval_rougeL_std": rouge_std})
+
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
 

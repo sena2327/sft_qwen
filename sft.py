@@ -110,7 +110,7 @@ def main() -> None:
     model = AutoModelForCausalLM.from_pretrained(
         args.base_model,
         config=config,
-        torch_dtype=dtype,
+        dtype=dtype,
         trust_remote_code=True,
     )
     for module in model.modules():
@@ -140,10 +140,12 @@ def main() -> None:
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        dataset_text_field="text",
-        max_seq_length=1024,
     )
     signature_params = inspect.signature(SFTTrainer.__init__).parameters
+    if "dataset_text_field" in signature_params:
+        trainer_kwargs["dataset_text_field"] = "text"
+    if "max_seq_length" in signature_params:
+        trainer_kwargs["max_seq_length"] = 1024
     if "processing_class" in signature_params:
         trainer_kwargs["processing_class"] = tokenizer
     else:

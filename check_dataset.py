@@ -9,7 +9,11 @@ def save_jsonl(split_ds, out_path: str) -> int:
     rows = 0
     with open(out_path, "w", encoding="utf-8") as f:
         for rec in split_ds:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            text = rec.get("text", "")
+            if not isinstance(text, str) or len(text) > 1500:
+                continue
+            filtered = {k: v for k, v in rec.items() if k not in {"url", "id"}}
+            f.write(json.dumps(filtered, ensure_ascii=False) + "\n")
             rows += 1
     return rows
 

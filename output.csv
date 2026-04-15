@@ -39,3 +39,4 @@ Timestamp,Model_Path,ROUGE-L_Mean,ROUGE-L_Std
 20260415_172138,sft_summary_lora,0.3464,0.1465
 20260415_173317,sft_summary_lora,0.3430,0.1445
 20260415_173638,sft_summary,0.2400,0.1030
+20260415_215149,dpo_output,0.3870,0.1622

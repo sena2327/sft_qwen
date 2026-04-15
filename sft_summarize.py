@@ -22,8 +22,13 @@ SYSTEM_PROMPT_FILE = "system_prompt_summary.txt"
 
 
 def format_record(record: Dict[str, str], system_prompt: str) -> Dict[str, str]:
+    label = record.get("summary", record.get("target"))
+    if label is None:
+        raise KeyError(
+            f"Record has no summary/target field. available keys: {list(record.keys())}"
+        )
     prompt = f"{system_prompt}\n{record['text']}\n答え:\n"
-    return {"text": f"{prompt}{record['target']}"}
+    return {"text": f"{prompt}{label}"}
 
 
 def main() -> None:

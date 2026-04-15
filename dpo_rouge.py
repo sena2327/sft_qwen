@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 from datasets import Dataset, load_dataset
 from rouge_score import rouge_scorer
+from tqdm.auto import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
 from trl import DPOTrainer
 
@@ -96,6 +97,7 @@ def build_preference_dataset(
     temperature: float,
     top_p: float,
     min_margin: float,
+    desc: str,
 ) -> Dataset:
     custom_tokenizer = JanomeRougeTokenizer(use_stemmer=True)
     scorer = rouge_scorer.RougeScorer(
@@ -104,7 +106,8 @@ def build_preference_dataset(
 
     records: List[Dict[str, str]] = []
     limit = min(len(split_ds), max_samples) if max_samples > 0 else len(split_ds)
-    for i in range(limit):
+    pbar = tqdm(range(limit), desc=desc, dynamic_ncols=True)
+    for i in pbar:
         rec = split_ds[i]
         prompt = build_prompt(system_prompt, rec["text"])
         reference = rec["target"].strip()
@@ -124,9 +127,11 @@ def build_preference_dataset(
             min_margin=min_margin,
         )
         if pair is None:
+            pbar.set_postfix({"pairs": len(records), "status": "skip"})
             continue
         chosen, rejected = pair
         records.append({"prompt": prompt, "chosen": chosen, "rejected": rejected})
+        pbar.set_postfix({"pairs": len(records)})
 
     if not records:
         raise RuntimeError(
@@ -202,6 +207,7 @@ def main() -> None:
         temperature=args.temperature,
         top_p=args.top_p,
         min_margin=args.min_margin,
+        desc="build train preferences",
     )
     eval_pref = build_preference_dataset(
         model=pair_model,
@@ -214,6 +220,7 @@ def main() -> None:
         temperature=args.temperature,
         top_p=args.top_p,
         min_margin=args.min_margin,
+        desc="build eval preferences",
     )
     del pair_model
     if torch.cuda.is_available():

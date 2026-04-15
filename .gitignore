@@ -4,5 +4,8 @@ sft_output
 *.pyc
 __pycache__
 prepare_data.py
-sft_output
+sft_only_lora
+sft_output_lora
+try_merged
+sft_output_lora_merged
 wandb

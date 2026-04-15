@@ -29,3 +29,6 @@ Timestamp,Model_Path,ROUGE-L_Mean,ROUGE-L_Std
 20260414_110135,Qwen/Qwen3-0.6B-Base,0.2280,0.1113
 20260414_125735,sft_output,0.3650,0.1451
 20260414_143658,sft_output,0.3867,0.1473
+20260414_183125,sft_only_lora_merged,0.3284,0.1474
+20260414_202420,sft_output_lora_merged,0.3816,0.1526
+20260414_210025,try_merged,0.3844,0.1538

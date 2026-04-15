@@ -8,4 +8,6 @@ sft_only_lora
 sft_output_lora
 try_merged
 sft_output_lora_merged
+sft_summary
+sft_summary_lora
 wandb

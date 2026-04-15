@@ -16,7 +16,7 @@ from trl import SFTTrainer
 BASE_MODEL = "Qwen/Qwen3-0.6B-Base"
 TRAIN_FILE = "xlsum_ja/train.jsonl"
 VALIDATION_FILE = "xlsum_ja/validation.jsonl"
-EVAL_FILE = "xlsum_ja/eval.jsonl"
+EVAL_FILE = "xlsum_ja/test.jsonl"
 OUTPUT_DIR = "sft_sammary"
 SYSTEM_PROMPT_FILE = "system_prompt_summary.txt"
 
@@ -44,7 +44,7 @@ def main() -> None:
         default=SYSTEM_PROMPT_FILE,
         help="system prompt ファイルのパス",
     )
-    parser.add_argument("--epochs", type=int, default=1, help="学習エポック数")
+    parser.add_argument("--epochs", type=int, default=3, help="学習エポック数")
     parser.add_argument("--batch-size", type=int, default=8, help="バッチサイズ")
     parser.add_argument(
         "--dropout",

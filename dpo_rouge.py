@@ -179,12 +179,15 @@ def main() -> None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "left"
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
     # Pair generation model (sampling) with current policy.
     pair_model = AutoModelForCausalLM.from_pretrained(
         args.policy_model,
         dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
         trust_remote_code=True,
     )
+    pair_model.to(device)
     pair_model.eval()
 
     ##Dataset

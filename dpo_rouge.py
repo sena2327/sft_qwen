@@ -47,16 +47,17 @@ def generate_candidates(
         model.device
     )
     prompt_len = int(inputs["attention_mask"].sum(dim=1)[0].item())
-    outputs = model.generate(
-        **inputs,
-        max_new_tokens=max_new_tokens,
-        do_sample=True,
-        num_return_sequences=num_candidates,
-        temperature=temperature,
-        top_p=top_p,
-        pad_token_id=tokenizer.pad_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-    )
+    with torch.inference_mode():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=True,
+            num_return_sequences=num_candidates,
+            temperature=temperature,
+            top_p=top_p,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
     candidates = []
     for out in outputs:
         pred_ids = out[prompt_len:]
@@ -253,13 +254,18 @@ def main() -> None:
         fp16=torch.cuda.is_available(),
     )
 
+    beta_set_in_config = False
     if DPOConfig is not None:
-        dpo_args = DPOConfig(
-            beta=args.beta,
-            max_length=args.max_length,
-            max_prompt_length=args.max_prompt_length,
-            **train_args_common,
-        )
+        dpo_config_params = inspect.signature(DPOConfig.__init__).parameters
+        dpo_specific = {}
+        if "beta" in dpo_config_params:
+            dpo_specific["beta"] = args.beta
+            beta_set_in_config = True
+        if "max_length" in dpo_config_params:
+            dpo_specific["max_length"] = args.max_length
+        if "max_prompt_length" in dpo_config_params:
+            dpo_specific["max_prompt_length"] = args.max_prompt_length
+        dpo_args = DPOConfig(**train_args_common, **dpo_specific)
     else:
         dpo_args = TrainingArguments(**train_args_common)
 
@@ -269,10 +275,11 @@ def main() -> None:
         args=dpo_args,
         train_dataset=train_pref,
         eval_dataset=eval_pref,
-        beta=args.beta,
     )
 
     sig = inspect.signature(DPOTrainer.__init__).parameters
+    if (not beta_set_in_config) and ("beta" in sig):
+        trainer_kwargs["beta"] = args.beta
     if "processing_class" in sig:
         trainer_kwargs["processing_class"] = tokenizer
     elif "tokenizer" in sig:

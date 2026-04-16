@@ -15,6 +15,15 @@ DEFAULT_EXPERIMENT_TIMESTAMPS = {
     "Exp6": "20260415_215149",
 }
 
+EXPERIMENT_DISPLAY_NAMES = {
+    "Exp1": "prompt tuning",
+    "Exp2": "naive sft_fft",
+    "Exp3": "lora",
+    "Exp4": "sft+lora",
+    "Exp5": "summary",
+    "Exp6": "sft+dpo",
+}
+
 
 def load_rows(csv_path: str) -> Dict[str, Dict[str, str]]:
     rows_by_ts: Dict[str, Dict[str, str]] = {}
@@ -68,15 +77,15 @@ def main() -> None:
         if ts not in rows:
             raise KeyError(f"Timestamp not found in {args.csv}: {ts} ({exp_name})")
         row = rows[ts]
-        labels.append(exp_name)
+        labels.append(f"{exp_name}: {EXPERIMENT_DISPLAY_NAMES.get(exp_name, exp_name)}")
         means.append(float(row["ROUGE-L_Mean"]))
         stds.append(float(row["ROUGE-L_Std"]))
         meta.append(row["Model_Path"])
 
-    plt.figure(figsize=(10, 5))
+    plt.figure(figsize=(12, 6))
     x = range(len(labels))
     bars = plt.bar(x, means, yerr=stds, capsize=5)
-    plt.xticks(list(x), labels)
+    plt.xticks(list(x), labels, rotation=20, ha="right")
     plt.ylabel("ROUGE-L F1")
     plt.title("Experiment Results (Mean ± Std)")
     plt.ylim(0, max(m + s for m, s in zip(means, stds)) * 1.15)
@@ -103,6 +112,7 @@ def main() -> None:
         )
 
     plt.tight_layout()
+    plt.subplots_adjust(bottom=0.25)
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     plt.savefig(args.output, dpi=160)
     print(f"Saved graph: {args.output}")

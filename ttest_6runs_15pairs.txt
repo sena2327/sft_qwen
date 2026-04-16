@@ -1,0 +1,28 @@
+T-test results for 6 runs (15 pairs)
+================================================================================
+Method: paired t-test when sample counts are equal; Welch otherwise
+
+Runs:
+- Exp1: ts=20260414_103915, n=345, mean=0.230020, std=0.095570
+- Exp2: ts=20260414_143658, n=345, mean=0.386656, std=0.147486
+- Exp3: ts=20260414_183125, n=345, mean=0.328393, std=0.147572
+- Exp4: ts=20260414_202420, n=345, mean=0.381620, std=0.152798
+- Exp5: ts=20260415_172138, n=345, mean=0.346359, std=0.146665
+- Exp6: ts=20260415_215149, n=345, mean=0.387044, std=0.162402
+
+Pairwise tests:
+[01/15] Exp1 vs Exp2 | paired_ttest | t=-18.970412, p=1.979165e-55, df=344.00
+[02/15] Exp1 vs Exp3 | paired_ttest | t=-14.212394, p=2.183501e-36, df=344.00
+[03/15] Exp1 vs Exp4 | paired_ttest | t=-18.536476, p=1.119232e-53, df=344.00
+[04/15] Exp1 vs Exp5 | paired_ttest | t=-15.635439, p=5.226412e-42, df=344.00
+[05/15] Exp1 vs Exp6 | paired_ttest | t=-18.977143, p=1.859108e-55, df=344.00
+[06/15] Exp2 vs Exp3 | paired_ttest | t=7.574742, p=3.354321e-13, df=344.00
+[07/15] Exp2 vs Exp4 | paired_ttest | t=1.007649, p=3.143313e-01, df=344.00
+[08/15] Exp2 vs Exp5 | paired_ttest | t=5.472963, p=8.542915e-08, df=344.00
+[09/15] Exp2 vs Exp6 | paired_ttest | t=-0.050858, p=9.594681e-01, df=344.00
+[10/15] Exp3 vs Exp4 | paired_ttest | t=-6.810626, p=4.348632e-11, df=344.00
+[11/15] Exp3 vs Exp5 | paired_ttest | t=-2.567667, p=1.066044e-02, df=344.00
+[12/15] Exp3 vs Exp6 | paired_ttest | t=-7.860606, p=4.962410e-14, df=344.00
+[13/15] Exp4 vs Exp5 | paired_ttest | t=4.882093, p=1.609861e-06, df=344.00
+[14/15] Exp4 vs Exp6 | paired_ttest | t=-0.722172, p=4.706795e-01, df=344.00
+[15/15] Exp5 vs Exp6 | paired_ttest | t=-5.297231, p=2.103133e-07, df=344.00

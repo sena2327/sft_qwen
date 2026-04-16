@@ -100,16 +100,6 @@ def main() -> None:
             va="bottom",
             fontsize=9,
         )
-        plt.text(
-            i,
-            0.002,
-            model,
-            ha="center",
-            va="bottom",
-            fontsize=7,
-            rotation=90,
-            alpha=0.7,
-        )
 
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.25)

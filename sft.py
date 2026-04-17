@@ -108,6 +108,18 @@ def main() -> None:
     parser.add_argument("--epochs", type=int,default=1, help="学習エポック数")
     parser.add_argument("--batch-size", type=int, default=8, help="バッチサイズ")
     parser.add_argument(
+        "--gradient-accumulation-steps",
+        type=int,
+        default=8,
+        help="勾配累積ステップ数",
+    )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=2e-5,
+        help="学習率",
+    )
+    parser.add_argument(
         "--dropout",
         type=float,
         default=0.0,
@@ -145,6 +157,13 @@ def main() -> None:
         raise ValueError(
             f"--eval-max-new-tokens must be > 0. got: {args.eval_max_new_tokens}"
         )
+    if args.gradient_accumulation_steps <= 0:
+        raise ValueError(
+            "--gradient-accumulation-steps must be > 0. "
+            f"got: {args.gradient_accumulation_steps}"
+        )
+    if args.learning_rate <= 0:
+        raise ValueError(f"--learning-rate must be > 0. got: {args.learning_rate}")
     if not (0.0 <= args.dropout < 1.0):
         raise ValueError(f"--dropout must be in [0.0, 1.0). got: {args.dropout}")
 
@@ -205,9 +224,9 @@ def main() -> None:
         output_dir=args.output_dir,
         per_device_train_batch_size=1,
         per_device_eval_batch_size=args.batch_size,
-        gradient_accumulation_steps=8,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
         num_train_epochs=args.epochs,
-        learning_rate=2e-5,
+        learning_rate=args.learning_rate,
         warmup_ratio=0.03,
         lr_scheduler_type="cosine",
         logging_steps=10,

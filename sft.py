@@ -229,7 +229,7 @@ def main() -> None:
         learning_rate=args.learning_rate,
         warmup_ratio=0.03,
         lr_scheduler_type="cosine",
-        logging_steps=10,
+        logging_steps=100,
         eval_strategy="epoch",
         save_strategy="epoch",
         save_total_limit=2,

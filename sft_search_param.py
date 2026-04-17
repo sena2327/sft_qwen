@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -13,6 +14,22 @@ def format_lr(lr: float) -> str:
 def run_cmd(cmd: list[str], env: dict[str, str]) -> None:
     print("$ " + " ".join(cmd))
     subprocess.run(cmd, check=True, env=env)
+
+
+def wait_for_model_dir(model_dir: Path, timeout_sec: int = 60) -> None:
+    deadline = time.time() + timeout_sec
+    required_files = [
+        model_dir / "config.json",
+    ]
+    while time.time() < deadline:
+        if model_dir.is_dir() and all(p.exists() for p in required_files):
+            return
+        time.sleep(1.0)
+    missing = [str(p) for p in required_files if not p.exists()]
+    raise FileNotFoundError(
+        "model_dir is not ready for evaluation. "
+        f"dir={model_dir}, missing={missing}"
+    )
 
 
 def main() -> None:
@@ -79,16 +96,16 @@ def main() -> None:
                 str(model_dir),
             ]
 
-            eval_cmd = [
-                sys.executable,
-                str(eval_script),
-                "--model",
-                str(model_dir),
-            ]
-
             succeeded = False
             try:
                 run_cmd(sft_cmd, env=child_env)
+                wait_for_model_dir(model_dir)
+                eval_cmd = [
+                    sys.executable,
+                    str(eval_script),
+                    "--model",
+                    str(model_dir),
+                ]
                 run_cmd(eval_cmd, env=child_env)
                 succeeded = True
             finally:

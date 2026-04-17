@@ -16,19 +16,44 @@ def run_cmd(cmd: list[str], env: dict[str, str]) -> None:
     subprocess.run(cmd, check=True, env=env)
 
 
-def wait_for_model_dir(model_dir: Path, timeout_sec: int = 60) -> None:
+def wait_for_model_dir(model_dir: Path, timeout_sec: int = 300) -> Path:
     deadline = time.time() + timeout_sec
-    required_files = [
-        model_dir / "config.json",
-    ]
+    last_log_at = 0.0
+
+    def pick_ready_dir() -> Path | None:
+        root_config = model_dir / "config.json"
+        if model_dir.is_dir() and root_config.exists():
+            return model_dir
+
+        # save_model が未実行でも checkpoint-* に config がある場合はそれを評価に使う
+        if model_dir.is_dir():
+            checkpoints = sorted(
+                model_dir.glob("checkpoint-*"),
+                key=lambda p: p.name,
+            )
+            for ckpt in reversed(checkpoints):
+                if (ckpt / "config.json").exists():
+                    return ckpt
+        return None
+
     while time.time() < deadline:
-        if model_dir.is_dir() and all(p.exists() for p in required_files):
-            return
+        ready_dir = pick_ready_dir()
+        if ready_dir is not None:
+            return ready_dir
+        now = time.time()
+        if now - last_log_at >= 5.0:
+            print(f"waiting for model artifacts... dir={model_dir}")
+            last_log_at = now
         time.sleep(1.0)
-    missing = [str(p) for p in required_files if not p.exists()]
+
+    root_exists = model_dir.is_dir()
+    has_root_config = (model_dir / "config.json").exists()
+    checkpoints = sorted(model_dir.glob("checkpoint-*")) if root_exists else []
     raise FileNotFoundError(
-        "model_dir is not ready for evaluation. "
-        f"dir={model_dir}, missing={missing}"
+        "model artifacts are not ready for evaluation. "
+        f"dir={model_dir}, root_exists={root_exists}, "
+        f"has_root_config={has_root_config}, "
+        f"checkpoints={[p.name for p in checkpoints]}"
     )
 
 
@@ -52,6 +77,12 @@ def main() -> None:
         type=str,
         default="0",
         help="sft.py / generate_evaluate.py 実行時の CUDA_VISIBLE_DEVICES",
+    )
+    parser.add_argument(
+        "--model-ready-timeout-sec",
+        type=int,
+        default=300,
+        help="学習後に評価用モデルが揃うまで待つ秒数",
     )
     args = parser.parse_args()
 
@@ -99,12 +130,16 @@ def main() -> None:
             succeeded = False
             try:
                 run_cmd(sft_cmd, env=child_env)
-                wait_for_model_dir(model_dir)
+                print(f"sft finished. checking model dir: {model_dir}")
+                eval_model_dir = wait_for_model_dir(
+                    model_dir, timeout_sec=args.model_ready_timeout_sec
+                )
+                print(f"model ready for eval: {eval_model_dir}")
                 eval_cmd = [
                     sys.executable,
                     str(eval_script),
                     "--model",
-                    str(model_dir),
+                    str(eval_model_dir),
                 ]
                 run_cmd(eval_cmd, env=child_env)
                 succeeded = True

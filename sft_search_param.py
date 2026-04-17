@@ -47,6 +47,7 @@ def main() -> None:
         raise FileNotFoundError(f"not found: {eval_script}")
     child_env = os.environ.copy()
     child_env["CUDA_VISIBLE_DEVICES"] = args.cuda_visible_devices
+    child_env["PYTHONUNBUFFERED"] = "1"
     print(f"CUDA_VISIBLE_DEVICES={args.cuda_visible_devices}")
 
     accum_list = [1, 8, 16, 32]
